@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NetGuard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <style>
+    :root {
+      --bg:      #07101c;
+      --bg1:     #0b1828;
+      --bg2:     #0f2035;
+      --bg3:     #152840;
+      --surface: #0d1e30;
+      --border:  #18304a;
+      --border2: #1f3d5c;
+      --text:    #bdd0e4;
+      --text2:   #5a7d99;
+      --text3:   #2e4d66;
+      --blue:    #3476cc;
+      --blue2:   #1d5aac;
+      --red:     #c24848;
+      --orange:  #b87820;
+      --green:   #1a9636;
+      --green2:  #22aa3f;
+      --purple:  #6844a8;
+      --purple2: #4e309a;
+      --mono:    'IBM Plex Mono', monospace;
+      --sans:    'Inter', sans-serif;
+    }
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{height:100%}
+    body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:13px;line-height:1.5;display:flex;flex-direction:column}
+
+    @keyframes spin   {to{transform:rotate(360deg)}}
+    @keyframes slide  {0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
+    @keyframes pulse  {0%,100%{opacity:1}50%{opacity:.3}}
+    @keyframes fadein {from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes rise   {from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+    @keyframes popIn  {from{opacity:0;transform:scale(.92) translateY(12px)}to{opacity:1;transform:scale(1) translateY(0)}}
+
+    /* ── LOADER ─────────────────────────────────────── */
+    #loader{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;transition:opacity .5s}
+    #loader.hidden{opacity:0;pointer-events:none}
+    .ld-eye{font-family:var(--mono);font-size:11px;letter-spacing:5px;color:var(--text3);text-transform:uppercase}
+    .ld-name{font-size:34px;font-weight:600;letter-spacing:-1.5px;color:var(--text)}
+    .ld-name em{color:var(--blue);font-style:normal}
+    .ld-bar-wrap{width:180px;height:1px;background:var(--border);overflow:hidden;margin-top:6px}
+    .ld-bar{height:100%;width:40%;background:var(--blue);animation:slide 1s ease-in-out infinite}
+    .ld-msg{font-size:11px;color:var(--text3);font-family:var(--mono)}
+    .ld-step{font-family:var(--mono);font-size:10px;color:var(--text3);display:flex;align-items:center;gap:8px}
+    .ld-step.done{color:var(--green2)}.ld-step.active{color:var(--blue)}
+    .ld-dot{width:4px;height:4px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+    /* ── HEADER ─────────────────────────────────────── */
+    header{
+      height:50px;background:var(--bg1);border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 28px;flex-shrink:0;position:sticky;top:0;z-index:60;
+    }
+    .hdr-l{display:flex;align-items:center;gap:16px}
+    .brand{font-family:var(--mono);font-size:16px;font-weight:500;letter-spacing:.5px;color:var(--text)}
+    .brand em{color:var(--blue);font-style:normal}
+    .hdr-sep{width:1px;height:16px;background:var(--border2)}
+    .hdr-sub{font-size:10px;color:var(--text3);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase}
+    .conn{display:flex;align-items:center;gap:6px;padding:4px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:20px;font-size:11px;color:var(--text2);font-family:var(--mono)}
+    #dot{width:6px;height:6px;border-radius:50%;background:var(--red);flex-shrink:0;transition:all .3s}
+    #dot.on{background:var(--green2);box-shadow:0 0 4px var(--green)50}
+
+    /* ── NAV ─────────────────────────────────────────── */
+    .nav{display:flex;background:var(--bg1);border-bottom:1px solid var(--border);padding:0 28px;flex-shrink:0}
+    .nav-tab{padding:11px 18px;font-size:12px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;color:var(--text3);transition:all .15s;display:flex;align-items:center;gap:6px}
+    .nav-tab:hover{color:var(--text2)}
+    .nav-tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+    .nav-tab.t-sim.active{color:var(--red);border-bottom-color:var(--red)}
+
+    /* ── STATS STRIP ─────────────────────────────────── */
+    .stats{display:flex;gap:1px;background:var(--border);border-bottom:1px solid var(--border);flex-shrink:0}
+    .stat{flex:1;background:var(--bg1);padding:14px 22px;position:relative;overflow:hidden}
+    .stat-bar{position:absolute;top:0;left:0;right:0;height:2px}
+    .stat-bar.total{background:linear-gradient(90deg,var(--blue2),var(--blue))}
+    .stat-bar.crit {background:var(--red)}
+    .stat-bar.high {background:var(--orange)}
+    .stat-bar.med  {background:var(--blue)}
+    .stat-bar.safe {background:var(--green2)}
+    .stat .lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1.5px;font-family:var(--mono);margin-bottom:4px}
+    .stat .num{font-family:var(--mono);font-size:28px;font-weight:600;line-height:1;letter-spacing:-1px}
+    .num.n{color:var(--text2)}.num.c{color:var(--red)}.num.h{color:var(--orange)}.num.m{color:var(--blue)}.num.s{color:var(--green2)}
+    .stat .sub{font-size:9px;color:var(--text3);margin-top:3px;font-family:var(--mono)}
+
+    /* ── PROGRESS ────────────────────────────────────── */
+    #scan-bar-wrap{height:2px;background:transparent;display:none;overflow:hidden;flex-shrink:0}
+    #scan-bar{height:100%;width:40%;background:var(--blue);animation:slide 1.2s ease-in-out infinite}
+
+    /* ── TOOLBAR ─────────────────────────────────────── */
+    .toolbar{padding:10px 28px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;font-family:var(--sans);cursor:pointer;transition:all .15s;border:none;line-height:1.4;white-space:nowrap}
+    .btn-solid{background:var(--blue2);color:#fff}.btn-solid:hover{background:var(--blue)}.btn-solid:disabled{background:var(--bg3);color:var(--text3);cursor:not-allowed}
+    .btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border2)}.btn-ghost:hover{border-color:var(--blue);color:var(--blue)}.btn-ghost:disabled{opacity:.4;cursor:not-allowed}
+    #search{background:var(--bg1);border:1px solid var(--border2);color:var(--text);padding:6px 12px;border-radius:6px;font-size:12px;width:200px;font-family:var(--sans);outline:none;transition:border-color .15s}
+    #search:focus{border-color:var(--blue)}#search::placeholder{color:var(--text3)}
+    #last-scan{font-size:11px;color:var(--text3);margin-left:auto;font-family:var(--mono)}
+
+    /* ── TABLE ───────────────────────────────────────── */
+    #dashboard-view{display:flex;flex-direction:column;flex:1;overflow:hidden}
+    .tbl-wrap{flex:1;overflow:auto}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    thead th{
+      background:var(--bg);padding:8px 14px;text-align:left;color:var(--text3);font-weight:500;
+      border-bottom:1px solid var(--border);white-space:nowrap;
+      font-size:9px;text-transform:uppercase;letter-spacing:1.2px;font-family:var(--mono);
+      position:sticky;top:0;z-index:2;
+    }
+    thead th:first-child{padding-left:28px}
+    thead th:last-child{padding-right:28px}
+    tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+    tbody tr.rlink{cursor:pointer}
+    tbody tr.rlink:hover{background:rgba(255,255,255,.018)}
+    /* severity left gutter */
+    tbody tr.sv-critical td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+    tbody tr.sv-high     td:first-child{box-shadow:inset 3px 0 0 var(--orange)}
+    tbody tr.sv-medium   td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
+    tbody tr.sv-low      td:first-child{box-shadow:inset 3px 0 0 var(--green2)}
+    td{padding:10px 14px;vertical-align:middle}
+    td:first-child{padding-left:28px}td:last-child{padding-right:28px}
+    .td-ip{font-family:var(--mono);font-size:12px;color:var(--text);font-weight:500;white-space:nowrap}
+    .td-host{color:var(--text);font-size:12px}
+    .td-type{font-size:10px;color:var(--blue);margin-top:2px;font-family:var(--mono)}
+    .td-os{color:var(--text2);font-size:11px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .td-ts{font-family:var(--mono);font-size:11px;color:var(--text3);white-space:nowrap}
+
+    /* Severity badges */
+    .badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;font-family:var(--mono);border:1px solid}
+    .badge::before{content:'';width:4px;height:4px;border-radius:50%;background:currentColor;flex-shrink:0}
+    .badge.critical {color:var(--red);   background:rgba(194,72,72,.08); border-color:rgba(194,72,72,.2)}
+    .badge.high     {color:var(--orange);background:rgba(184,120,32,.07);border-color:rgba(184,120,32,.2)}
+    .badge.medium   {color:var(--blue);  background:rgba(52,118,204,.07);border-color:rgba(52,118,204,.2)}
+    .badge.low      {color:var(--green2);background:rgba(34,170,63,.06); border-color:rgba(34,170,63,.18)}
+    .badge.unknown  {color:var(--text2); background:rgba(90,125,153,.06);border-color:var(--border2)}
+    .badge.scanning {color:var(--blue);  background:rgba(52,118,204,.05);border-color:rgba(52,118,204,.18);animation:pulse 1.4s ease infinite}
+    .badge.discovered{color:var(--text3);background:transparent;border-color:var(--border)}
+
+    /* Score */
+    .score-wrap{display:flex;align-items:center;gap:8px}
+    .score-num{font-family:var(--mono);font-size:13px;font-weight:600;min-width:24px}
+    .score-bar{width:50px;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+    .score-fill{height:100%;border-radius:2px}
+
+    /* Port pills */
+    .port-pills{display:flex;flex-wrap:wrap;gap:3px;align-items:center}
+    .ppill{display:inline-flex;align-items:center;font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:3px;border:1px solid;white-space:nowrap;gap:2px}
+    .ppill.critical{color:var(--red);   background:rgba(194,72,72,.07); border-color:rgba(194,72,72,.18)}
+    .ppill.high    {color:var(--orange);background:rgba(184,120,32,.06);border-color:rgba(184,120,32,.16)}
+    .ppill.medium  {color:var(--blue);  background:rgba(52,118,204,.06);border-color:rgba(52,118,204,.16)}
+    .clean-tag{font-family:var(--mono);font-size:10px;color:var(--green2);display:flex;align-items:center;gap:3px}
+
+    /* Deep scan inline */
+    .btn-ds{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--text3);cursor:pointer;transition:all .15s;white-space:nowrap}
+    .btn-ds:hover{border-color:var(--blue);color:var(--blue);background:rgba(52,118,204,.05)}
+    .scan-ind{display:flex;align-items:center;gap:6px;color:var(--text3);font-family:var(--mono);font-size:11px}
+    .spin-sm{animation:spin .7s linear infinite;display:inline-block;line-height:1}
+
+    /* Empty / scanning */
+    #empty{text-align:center;padding:64px;display:none;color:var(--text3);font-family:var(--mono);font-size:12px;flex:1}
+    #scanning-msg{text-align:center;padding:64px;display:none}
+    #scanning-msg p{color:var(--text3);font-size:11px;margin-top:10px;font-family:var(--mono)}
+    .spinner{width:22px;height:22px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto}
+
+    /* ── SIMULATOR ───────────────────────────────────── */
+    #simulator-panel{display:none;padding:28px;flex:1;overflow:auto}
+    .sim-hdr{margin-bottom:22px}
+    .sim-hdr h2{font-size:14px;color:var(--red);font-weight:600;margin-bottom:3px}
+    .sim-hdr p{font-size:12px;color:var(--text3)}
+    .atk-grid{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px}
+    .atk-btn{padding:8px 16px;border:1px solid;border-radius:6px;background:transparent;cursor:pointer;font-size:12px;font-weight:500;font-family:var(--sans);transition:all .15s;display:flex;align-items:center;gap:7px}
+    .atk-btn.wannacry  {color:var(--red);   border-color:rgba(194,72,72,.28)  }.atk-btn.wannacry:hover  {background:rgba(194,72,72,.06)}
+    .atk-btn.mirai     {color:var(--orange);border-color:rgba(184,120,32,.28) }.atk-btn.mirai:hover     {background:rgba(184,120,32,.06)}
+    .atk-btn.mitm      {color:#8e68d8;      border-color:rgba(142,104,216,.28)}.atk-btn.mitm:hover      {background:rgba(142,104,216,.06)}
+    .atk-btn.bruteforce{color:#c47830;      border-color:rgba(196,120,48,.28) }.atk-btn.bruteforce:hover{background:rgba(196,120,48,.06)}
+    .atk-btn.ransomware{color:var(--red);   border-color:rgba(194,72,72,.28)  }.atk-btn.ransomware:hover{background:rgba(194,72,72,.06)}
+    #topo-box{background:var(--bg1);border-radius:8px;height:400px;position:relative;border:1px solid var(--border);margin-bottom:18px;overflow:hidden}
+    #topo-svg{width:100%;height:100%}
+    #topo-ph{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--text3);font-size:11px;pointer-events:none;font-family:var(--mono)}
+    #topo-ph .ti{font-size:26px;margin-bottom:8px;opacity:.2}
+    #atk-res{display:none}
+    .ar-hdr{padding:14px 18px;border-radius:8px;background:var(--bg1);border:1px solid var(--border);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+    .ar-title{font-size:14px;font-weight:600}.ar-meta{font-size:11px;color:var(--text3);margin-top:3px;font-family:var(--mono)}
+    .ar-status{font-size:10px;font-weight:600;padding:3px 10px;border-radius:20px;font-family:var(--mono);letter-spacing:.5px}
+    .ar-status.compromised{background:rgba(194,72,72,.08);color:var(--red);border:1px solid rgba(194,72,72,.22)}
+    .ar-status.blocked    {background:rgba(26,150,54,.07); color:var(--green2);border:1px solid rgba(34,170,63,.2)}
+    .steps-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;font-family:var(--mono)}
+    .sc{padding:10px 14px;margin-bottom:5px;background:var(--bg1);border-radius:6px;border-left:2px solid;display:flex;gap:12px;align-items:flex-start}
+    .sc-n{font-size:10px;color:var(--text3);background:var(--bg2);border-radius:3px;padding:1px 7px;white-space:nowrap;margin-top:1px;font-family:var(--mono)}
+    .sc-b{flex:1}.sc-dev{color:var(--blue);font-weight:600;font-size:11px;margin-bottom:2px;font-family:var(--mono)}
+    .sc-act{color:var(--text);font-size:12px}.sc-v{color:var(--text3);font-size:11px;font-family:var(--mono)}
+    .sc-t{font-size:11px;color:var(--text3);white-space:nowrap;font-family:var(--mono)}
+    .fix-box{margin-top:14px;padding:14px 18px;background:rgba(26,150,54,.04);border:1px solid rgba(34,170,63,.14);border-radius:8px}
+    .fix-t{color:var(--green2);font-weight:600;font-size:12px;margin-bottom:6px}
+    .fix-b{color:var(--text);font-size:12px;line-height:1.65}.fix-tip{color:var(--text3);font-size:11px;margin-top:7px;line-height:1.5}
+    #sim-loading{display:none;position:absolute;inset:0;background:rgba(7,16,28,.88);z-index:10;justify-content:center;align-items:center;flex-direction:column;gap:10px;border-radius:8px}
+    #sim-loading.show{display:flex}
+    #sim-loading p{color:var(--text3);font-size:11px;font-family:var(--mono)}
+    .d3-tip{position:absolute;background:var(--bg1);border:1px solid var(--border2);border-radius:6px;padding:9px 12px;font-size:11px;color:var(--text);pointer-events:none;opacity:0;transition:opacity .15s;max-width:190px;z-index:20;font-family:var(--mono)}
+
+    /* ── MODAL ───────────────────────────────────────── */
+    .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:200;justify-content:center;align-items:center;backdrop-filter:blur(4px)}
+    .overlay.open{display:flex}
+    .modal{background:var(--bg1);border:1px solid var(--border2);border-radius:12px;width:600px;max-height:88vh;overflow-y:auto;animation:rise .18s ease}
+    .modal-hdr{padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg1);z-index:2}
+    .modal-hdr h2{font-size:13px;font-weight:600;font-family:var(--mono);color:var(--text)}
+    .modal-body{padding:18px 22px}
+    .closebtn{background:transparent;color:var(--text3);border:none;cursor:pointer;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:14px;transition:all .15s}
+    .closebtn:hover{background:var(--bg3);color:var(--text)}
+    .mrow{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px}
+    .mrow .k{color:var(--text3);font-family:var(--mono);font-size:11px}
+    .mrow .v{color:var(--text);text-align:right;font-size:12px}
+    .slbl{color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:1.5px;font-family:var(--mono);margin:16px 0 7px}
+    .explainer{font-size:12px;line-height:1.7;color:var(--text2)}
+    .cve-tag{display:inline-block;background:rgba(194,72,72,.06);color:var(--red);border:1px solid rgba(194,72,72,.16);border-radius:3px;padding:1px 7px;font-size:10px;margin:2px;font-family:var(--mono)}
+
+    /* Callout for unscanned */
+    .callout{background:rgba(52,118,204,.05);border:1px solid rgba(52,118,204,.16);border-radius:7px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .callout p{font-size:12px;color:var(--text2);line-height:1.55}.callout strong{color:var(--text)}
+    .btn-callout{background:var(--blue2);color:#fff;border:none;padding:6px 14px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap;transition:background .15s}
+    .btn-callout:hover{background:var(--blue)}
+
+    /* Port tabs + rows */
+    .port-tabs{display:flex;gap:4px;margin-bottom:9px;flex-wrap:wrap}
+    .ptab{font-size:10px;padding:3px 9px;border-radius:4px;cursor:pointer;border:1px solid var(--border);color:var(--text3);background:transparent;font-family:var(--mono);transition:all .15s}
+    .ptab.active{border-color:var(--blue);color:var(--blue);background:rgba(52,118,204,.07)}
+    .prow{border-radius:5px;padding:9px 12px;margin:3px 0;font-size:12px;display:flex;flex-direction:column;gap:4px;border:1px solid}
+    .prow.critical{background:rgba(194,72,72,.04); border-color:rgba(194,72,72,.16)}
+    .prow.high    {background:rgba(184,120,32,.04);border-color:rgba(184,120,32,.16)}
+    .prow.medium  {background:rgba(52,118,204,.04);border-color:rgba(52,118,204,.16)}
+    .prow.low     {background:rgba(34,170,63,.03); border-color:rgba(34,170,63,.13)}
+    .prow.unknown {background:var(--bg2);border-color:var(--border)}
+    .prow-top{display:flex;align-items:center;justify-content:space-between}
+    .pname{font-family:var(--mono);font-weight:500}
+    .pname.critical{color:var(--red)}.pname.high{color:var(--orange)}.pname.medium{color:var(--blue)}.pname.low{color:var(--green2)}.pname.unknown{color:var(--text2)}
+    .prisk{font-size:9px;padding:2px 7px;border-radius:3px;text-transform:uppercase;font-weight:600;letter-spacing:.5px;font-family:var(--mono)}
+    .prisk.critical{background:rgba(194,72,72,.12);color:var(--red)}.prisk.high{background:rgba(184,120,32,.12);color:var(--orange)}
+    .prisk.medium{background:rgba(52,118,204,.12);color:var(--blue)}.prisk.low{background:rgba(34,170,63,.1);color:var(--green2)}.prisk.unknown{background:rgba(90,125,153,.1);color:var(--text2)}
+    .preason{font-size:11px;color:var(--text2);line-height:1.5;margin-top:2px}
+
+    /* Copilot CTA in modal */
+    .modal-cop-cta{
+      margin-top:18px;padding:12px 16px;
+      background:rgba(104,68,168,.06);border:1px solid rgba(104,68,168,.18);
+      border-radius:7px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+    }
+    .modal-cop-cta-info h4{font-size:12px;font-weight:600;color:#9a7ae0;margin-bottom:2px}
+    .modal-cop-cta-info p{font-size:11px;color:var(--text3)}
+    .btn-ask-cop{background:rgba(104,68,168,.16);color:#9a7ae0;border:1px solid rgba(104,68,168,.28);padding:6px 14px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap;transition:all .15s}
+    .btn-ask-cop:hover{background:rgba(104,68,168,.26)}
+
+    /* ── FLOATING COPILOT ────────────────────────────── */
+    #cop-fab{
+      position:fixed;bottom:24px;right:24px;z-index:400;
+      width:52px;height:52px;border-radius:14px;cursor:pointer;
+      background:linear-gradient(145deg,#6844a8 0%,#3e2480 100%);
+      border:1px solid rgba(104,68,168,.55);
+      box-shadow:0 8px 28px rgba(0,0,0,.45), 0 2px 8px rgba(62,36,128,.4);
+      display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px;
+      transition:all .2s;user-select:none;
+    }
+    #cop-fab:hover{transform:translateY(-2px);box-shadow:0 14px 36px rgba(0,0,0,.5),0 4px 14px rgba(62,36,128,.45)}
+    #cop-fab:active{transform:translateY(0)}
+    .fab-icon{font-size:20px;line-height:1}
+    .fab-lbl{font-size:8px;color:rgba(210,190,255,.65);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase}
+    .fab-pulse{position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:var(--red);border:2px solid var(--bg);display:none}
+    .fab-pulse.on{display:block}
+
+    #cop-panel{
+      position:fixed;bottom:88px;right:24px;z-index:399;
+      width:380px;
+      background:var(--bg1);border:1px solid var(--border2);border-radius:16px;
+      box-shadow:0 28px 70px rgba(0,0,0,.6),0 10px 28px rgba(0,0,0,.35);
+      display:flex;flex-direction:column;overflow:hidden;
+      animation:popIn .22s ease;transform-origin:bottom right;
+    }
+    #cop-panel.cop-hidden{display:none}
+
+    .cop-hdr{
+      padding:14px 16px 12px;
+      background:linear-gradient(135deg,rgba(104,68,168,.16) 0%,rgba(62,36,128,.08) 100%);
+      border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;
+    }
+    .cop-hdr-ico{
+      width:32px;height:32px;border-radius:8px;flex-shrink:0;
+      background:linear-gradient(145deg,#6844a8,#3e2480);
+      border:1px solid rgba(104,68,168,.45);
+      display:flex;align-items:center;justify-content:center;font-size:15px;
+    }
+    .cop-hdr-info{flex:1}
+    .cop-hdr-name{font-size:13px;font-weight:600;color:var(--text)}
+    .cop-hdr-sub{font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:1px}
+    .cop-x{background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:2px;line-height:1;transition:color .15s}
+    .cop-x:hover{color:var(--text)}
+
+    /* Context strip */
+    .cop-ctx{padding:7px 14px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.12);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .cop-ctx-chip{font-size:10px;font-family:var(--mono);color:var(--text3);display:flex;align-items:center;gap:3px}
+    .cop-ctx-chip strong{color:var(--text2)}
+    .ctx-dot{width:3px;height:3px;border-radius:50%;background:var(--border2);flex-shrink:0}
+
+    .cop-msgs{flex:1;overflow-y:auto;padding:14px 14px 6px;display:flex;flex-direction:column;gap:10px;min-height:0;max-height:280px}
+    .cop-welcome{background:rgba(104,68,168,.07);border:1px solid rgba(104,68,168,.15);border-radius:8px;padding:13px}
+    .cop-welcome h4{font-size:12px;font-weight:600;color:#9a7ae0;margin-bottom:4px}
+    .cop-welcome p{font-size:11px;color:var(--text2);line-height:1.65}
+
+    .cmsg{display:flex;flex-direction:column;max-width:88%;animation:fadein .15s ease}
+    .cmsg.user{align-self:flex-end;align-items:flex-end}
+    .cmsg.ai{align-self:flex-start}
+    .cbubble{padding:9px 12px;border-radius:8px;font-size:12px;line-height:1.65}
+    .cmsg.user .cbubble{background:rgba(52,118,204,.14);color:rgba(110,162,238,.9);border:1px solid rgba(52,118,204,.22);border-radius:8px 8px 2px 8px}
+    .cmsg.ai   .cbubble{background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:8px 8px 8px 2px;white-space:pre-wrap}
+    .cop-thinking{font-size:11px;color:var(--text3);font-style:italic;font-family:var(--mono);padding:3px 0;align-self:flex-start}
+
+    .cop-suggs{padding:8px 14px;border-top:1px solid var(--border);display:flex;gap:4px;flex-wrap:wrap}
+    .cop-sugg{font-size:10px;padding:3px 9px;border-radius:12px;border:1px solid var(--border2);color:var(--text3);background:transparent;cursor:pointer;font-family:var(--mono);transition:all .15s;white-space:nowrap}
+    .cop-sugg:hover{border-color:rgba(104,68,168,.45);color:#9a7ae0;background:rgba(104,68,168,.06)}
+
+    .cop-inp-row{padding:10px 14px 13px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:flex-end}
+    .cop-inp{flex:1;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:6px;font-size:12px;font-family:var(--sans);outline:none;transition:border-color .15s;resize:none;min-height:36px;max-height:80px;line-height:1.5}
+    .cop-inp:focus{border-color:rgba(104,68,168,.55)}
+    .cop-send{background:rgba(104,68,168,.2);color:#9a7ae0;border:1px solid rgba(104,68,168,.32);padding:8px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;font-family:var(--sans);transition:all .15s;white-space:nowrap;align-self:flex-end}
+    .cop-send:hover{background:rgba(104,68,168,.32);border-color:rgba(104,68,168,.5)}
+    .cop-send:disabled{opacity:.4;cursor:not-allowed}
+
+    /* Scrollbar */
+    ::-webkit-scrollbar{width:5px;height:5px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+    ::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+  </style>
+</head>
+<body>
+
+<!-- Loader -->
+<div id="loader">
+  <div class="ld-eye">NetGuard Security</div>
+  <div class="ld-name">Net<em>Guard</em></div>
+  <div class="ld-bar-wrap"><div class="ld-bar"></div></div>
+  <div class="ld-msg" id="loader-msg">starting up...</div>
+  <div style="display:flex;flex-direction:column;gap:5px;margin-top:4px">
+    <div class="ld-step active" id="step-1"><span class="ld-dot"></span>initializing database</div>
+    <div class="ld-step"        id="step-2"><span class="ld-dot"></span>detecting network</div>
+    <div class="ld-step"        id="step-3"><span class="ld-dot"></span>ready</div>
+  </div>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="hdr-l">
+    <div class="brand">Net<em>Guard</em></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-sub">Network Security Monitor</div>
+  </div>
+  <div class="conn"><span id="dot"></span><span id="conn-text">Connecting</span></div>
+</header>
+
+<!-- Nav -->
+<nav class="nav">
+  <div class="nav-tab active"  id="tab-dashboard" onclick="switchView('dashboard')">◈ Dashboard</div>
+  <div class="nav-tab t-sim"   id="tab-simulator" onclick="switchView('simulator')">⚡ Attack Simulator</div>
+</nav>
+
+<!-- Stats -->
+<div class="stats">
+  <div class="stat s-total"><div class="stat-bar total"></div><div class="lbl">Total Devices</div><div class="num n" id="s-total">0</div><div class="sub">on this network</div></div>
+  <div class="stat s-crit" ><div class="stat-bar crit"></div> <div class="lbl">Critical</div>      <div class="num c" id="s-critical">0</div><div class="sub">score ≥ 80</div></div>
+  <div class="stat s-high" ><div class="stat-bar high"></div> <div class="lbl">High</div>           <div class="num h" id="s-high">0</div>    <div class="sub">score ≥ 60</div></div>
+  <div class="stat s-med"  ><div class="stat-bar med"></div>  <div class="lbl">Medium</div>         <div class="num m" id="s-medium">0</div>  <div class="sub">score ≥ 40</div></div>
+  <div class="stat s-safe" ><div class="stat-bar safe"></div> <div class="lbl">Safe</div>            <div class="num s" id="s-safe">0</div>    <div class="sub">score &lt; 40</div></div>
+</div>
+
+<div id="scan-bar-wrap"><div id="scan-bar"></div></div>
+
+<!-- Dashboard -->
+<div id="dashboard-view">
+  <div class="toolbar">
+    <button class="btn btn-solid" id="scan-btn" onclick="triggerScan()">▶ Discover</button>
+    <button class="btn btn-ghost" id="deep-all-btn" onclick="triggerDeepScanAll()">⬡ Deep Scan All</button>
+    <input id="search" type="text" placeholder="Filter by IP or hostname…" oninput="render()"/>
+    <span id="last-scan"></span>
+  </div>
+  <div class="tbl-wrap">
+    <div id="scanning-msg"><div class="spinner"></div><p>discovering devices on your network…</p></div>
+    <table id="main-table" style="display:none">
+      <thead><tr>
+        <th>IP Address</th><th>Device</th><th>OS</th>
+        <th>Dangerous Ports</th><th>Risk Score</th><th>Severity</th><th>Last Scanned</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div id="empty">no devices found — connect to a network and click Discover</div>
+  </div>
+</div>
+
+<!-- Simulator -->
+<div id="simulator-panel">
+  <div class="sim-hdr"><h2>⚡ Attack Simulator</h2><p>Simulate real-world attacks on your network. Deep scan devices first for accurate results.</p></div>
+  <div class="atk-grid">
+    <button class="atk-btn wannacry"   onclick="runSim('wannacry')">💀 WannaCry</button>
+    <button class="atk-btn mirai"      onclick="runSim('mirai')">🤖 Mirai Botnet</button>
+    <button class="atk-btn mitm"       onclick="runSim('mitm')">👁 Man-in-the-Middle</button>
+    <button class="atk-btn bruteforce" onclick="runSim('bruteforce')">🔑 Brute Force</button>
+    <button class="atk-btn ransomware" onclick="runSim('ransomware')">🔒 Ransomware</button>
+  </div>
+  <div id="topo-box">
+    <svg id="topo-svg"></svg>
+    <div id="topo-ph"><div class="ti">🌐</div><div>Network topology appears here</div><div style="font-size:10px;margin-top:3px;opacity:.5">Discover → Deep Scan → pick an attack</div></div>
+    <div id="sim-loading"><div class="spinner"></div><p id="sim-txt">Simulating…</p></div>
+  </div>
+  <div class="d3-tip" id="d3-tip"></div>
+  <div id="atk-res">
+    <div class="ar-hdr" id="ar-hdr"></div>
+    <div class="steps-lbl">Attack Path</div>
+    <div id="ar-steps"></div>
+    <div class="fix-box" id="ar-fix"></div>
+  </div>
+</div>
+
+<!-- Device modal -->
+<div class="overlay" id="overlay" onclick="overlayClick(event)">
+  <div class="modal">
+    <div class="modal-hdr">
+      <h2 id="modal-title"></h2>
+      <button class="closebtn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ── FLOATING COPILOT ────────────────────────────── -->
+<div id="cop-fab" onclick="toggleCopilot()">
+  <div class="fab-pulse" id="fab-pulse"></div>
+  <div class="fab-icon">✦</div>
+  <div class="fab-lbl">AI</div>
+</div>
+
+<div id="cop-panel" class="cop-hidden">
+  <div class="cop-hdr">
+    <div class="cop-hdr-ico">✦</div>
+    <div class="cop-hdr-info">
+      <div class="cop-hdr-name">AI Copilot</div>
+      <div class="cop-hdr-sub" id="cop-hdr-sub">network security assistant</div>
+    </div>
+    <button class="cop-x" onclick="toggleCopilot()">✕</button>
+  </div>
+  <div class="cop-ctx" id="cop-ctx">
+    <div class="cop-ctx-chip"><span>Loading context…</span></div>
+  </div>
+  <div class="cop-msgs" id="cop-msgs">
+    <div class="cop-welcome">
+      <h4>✦ Network AI Copilot</h4>
+      <p>I have full visibility into your scan results. Ask about risks, which devices to fix first, CVEs, or anything about your network security.</p>
+    </div>
+  </div>
+  <div class="cop-suggs">
+    <button class="cop-sugg" onclick="copAsk(this.textContent)">What are my biggest risks?</button>
+    <button class="cop-sugg" onclick="copAsk(this.textContent)">Which device first?</button>
+    <button class="cop-sugg" onclick="copAsk(this.textContent)">Network posture summary</button>
+    <button class="cop-sugg" onclick="copAsk(this.textContent)">Any CVEs to worry about?</button>
+  </div>
+  <div class="cop-inp-row">
+    <textarea class="cop-inp" id="cop-inp" placeholder="Ask about your network…" rows="1"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendCopilot()}"
+      oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'"></textarea>
+    <button class="cop-send" id="cop-send" onclick="sendCopilot()">Send ↑</button>
+  </div>
+</div>
+
+<script>
+  let devices      = [];
+  let scanning     = false;
+  let deepScanning = new Set();
+  let currentView  = 'dashboard';
+  let activeTab    = 'all';
+  let copOpen      = false;
+  let copHistory   = [];
+  let topoData     = null;
+  let d3Sim        = null;
+
+  // ── View ────────────────────────────────────────────────────
+  function switchView(v) {
+    currentView = v;
+    document.getElementById('dashboard-view').style.display  = v==='dashboard' ? 'flex' : 'none';
+    document.getElementById('simulator-panel').style.display = v==='simulator' ? 'block' : 'none';
+    document.getElementById('tab-dashboard').classList.toggle('active', v==='dashboard');
+    document.getElementById('tab-simulator').classList.toggle('active', v==='simulator');
+    if (v==='simulator') loadTopology();
+  }
+
+  // ── WebSocket ────────────────────────────────────────────────
+  function connectWS() {
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onopen  = () => setConn(true);
+    ws.onclose = () => { setConn(false); setTimeout(connectWS, 3000); };
+    ws.onmessage = async ({ data }) => {
+      const d = JSON.parse(data);
+      if (d.event === 'scan_started') {
+        devices=[]; render(); updateStats(); setDiscovering(true);
+        document.getElementById('scanning-msg').style.display='block';
+        document.getElementById('main-table').style.display='none';
+        document.getElementById('last-scan').textContent='Scanning '+d.subnet+'…';
+        return;
+      }
+      if (d.event === 'arp_complete') {
+        document.getElementById('scanning-msg').style.display='none';
+        document.getElementById('main-table').style.display='table';
+        document.getElementById('last-scan').textContent=d.found+' device'+(d.found!==1?'s':'')+' found — deep scan to analyze';
+        devices=d.ips.map(ip=>({ip,hostname:'unknown',os:'unknown',severity:'discovered',final_score:null,ports:'[]',port_analysis:'[]',dangerous_ports:'[]',cves:'[]',shodan_tags:'[]',rule_reasons:[]}));
+        render(); updateStats(); return;
+      }
+      if (d.event === 'scan_complete') {
+        setDiscovering(false);
+        if(devices.length>0) document.getElementById('last-scan').textContent=new Date().toLocaleTimeString()+' — '+devices.length+' device(s)';
+        return;
+      }
+      if (d.event === 'deep_scan_started') {
+        deepScanning.add(d.ip);
+        const i=devices.findIndex(x=>x.ip===d.ip);
+        if(i>=0) devices[i]={...devices[i],severity:'scanning',final_score:null};
+        render(); return;
+      }
+      if (d.event === 'deep_scan_complete') {
+        deepScanning.delete(d.ip);
+        const i=devices.findIndex(x=>x.ip===d.ip);
+        if(i>=0) devices[i]={...devices[i],...d};
+        else     devices.push(d);
+        render(); updateStats(); refreshCopCtx(); return;
+      }
+      const i=devices.findIndex(x=>x.ip===d.ip);
+      if(i>=0) devices[i]={...devices[i],...d};
+      else     devices.push(d);
+      render(); updateStats();
+    };
+  }
+
+  function setConn(online) {
+    const dot=document.getElementById('dot');
+    dot.style.background=online?'var(--green2)':'var(--red)';
+    dot.style.boxShadow=online?'0 0 4px var(--green)50':'none';
+    dot.classList.toggle('on',online);
+    document.getElementById('conn-text').textContent=online?'Live':'Reconnecting';
+  }
+
+  // ── Boot ─────────────────────────────────────────────────────
+  async function boot() {
+    stepDone(1); stepActive(2); setLoaderMsg('detecting network…');
+    await sleep(500);
+    try{const s=await fetch('/api/status').then(r=>r.json());document.getElementById('last-scan').textContent=`Subnet: ${s.subnet}`;}catch(e){}
+    stepDone(2); stepActive(3); setLoaderMsg('ready');
+    await sleep(400); stepDone(3);
+    await sleep(300);
+    hideLoader();
+    connectWS();
+    await loadDevices();
+  }
+
+  async function loadDevices() {
+    const res=await fetch('/api/devices');
+    devices=await res.json();
+    if(devices.length===0){
+      document.getElementById('scanning-msg').style.display='block';
+      document.getElementById('main-table').style.display='none';
+      setDiscovering(true);
+      await fetch('/api/scan',{method:'POST'});
+    } else {
+      document.getElementById('scanning-msg').style.display='none';
+      document.getElementById('main-table').style.display='table';
+      render(); updateStats(); refreshCopCtx();
+    }
+  }
+
+  // ── Scan triggers ────────────────────────────────────────────
+  async function triggerScan() {
+    setDiscovering(true);
+    await fetch('/api/scan',{method:'POST'});
+    setTimeout(()=>setDiscovering(false),30000);
+  }
+  async function triggerDeepScan(ip) {
+    if(deepScanning.has(ip)) return;
+    await fetch(`/api/devices/${ip}/deep-scan`,{method:'POST'});
+  }
+  async function triggerDeepScanAll() {
+    const btn=document.getElementById('deep-all-btn');
+    btn.disabled=true;
+    await fetch('/api/scan/deep-all',{method:'POST'});
+    setTimeout(()=>btn.disabled=false, 5000);
+  }
+  function setDiscovering(on) {
+    scanning=on;
+    const btn=document.getElementById('scan-btn');
+    const bar=document.getElementById('scan-bar-wrap');
+    btn.disabled=on;
+    btn.textContent=on?'⏳ Discovering…':'▶ Discover';
+    bar.style.display=on?'block':'none';
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────
+  function scoreColor(n){if(n>=80)return'var(--red)';if(n>=60)return'var(--orange)';if(n>=40)return'var(--blue)';return'var(--green2)'}
+  function parseJ(val,fb='[]'){
+    if(Array.isArray(val))return val;
+    try{const p=JSON.parse(typeof val==='string'?val:fb);return Array.isArray(p)?p:[];}catch{return[];}
+  }
+  function deviceType(d){
+    const os=(d.os||'').toLowerCase();
+    const ports=parseJ(d.ports).map(p=>p.port);
+    try{const v=parseJ(d.vendor||'{}');if(!Array.isArray(v)){const vn=Object.values(v)[0]||'';if(vn)return{icon:'◈',label:vn};}}catch{}
+    if(os.includes('android'))                        return{icon:'📱',label:'Android'};
+    if(os.includes('ios')||os.includes('iphone'))     return{icon:'📱',label:'iPhone'};
+    if(os.includes('windows'))                        return{icon:'🖥',label:'Windows PC'};
+    if(os.includes('linux')&&ports.includes(80))      return{icon:'◈',label:'Linux Router'};
+    if(os.includes('linux'))                          return{icon:'🐧',label:'Linux'};
+    if(os.includes('mac')||os.includes('darwin'))     return{icon:'💻',label:'Mac'};
+    if(ports.includes(9100))                          return{icon:'🖨',label:'Printer'};
+    if(ports.includes(554)||ports.includes(8554))     return{icon:'📷',label:'IP Camera'};
+    if(ports.includes(1883)||ports.includes(8883))    return{icon:'🔌',label:'IoT Device'};
+    if(ports.some(p=>[80,443,8080,8443].includes(p))) return{icon:'◈',label:'Router/AP'};
+    if(ports.includes(53))                            return{icon:'◈',label:'Router/AP'};
+    return{icon:'◉',label:''};
+  }
+
+  // ── Render ───────────────────────────────────────────────────
+  function render(){
+    const q=document.getElementById('search').value.toLowerCase();
+    const list=q?devices.filter(d=>d.ip?.includes(q)||(d.hostname||'').toLowerCase().includes(q)):devices;
+    document.getElementById('empty').style.display=(!list.length&&!scanning)?'block':'none';
+
+    document.getElementById('tbody').innerHTML=list.map(d=>{
+      const score=d.final_score??null;
+      const sev=d.severity??'discovered';
+      const isScanned=score!==null;
+      const isScanning=deepScanning.has(d.ip)||sev==='scanning';
+      const color=isScanned?scoreColor(score):'var(--text3)';
+      const ts=d.last_scanned?new Date(d.last_scanned).toLocaleTimeString():'—';
+      const dangerous=parseJ(d.dangerous_ports);
+
+      // Dangerous ports column — show pills for critical+high+medium
+      const shown=dangerous.filter(p=>['critical','high','medium'].includes(p.risk)).slice(0,5);
+      let portCell;
+      if(!isScanned&&!isScanning)       portCell=`<span style="color:var(--text3);font-family:var(--mono);font-size:11px">—</span>`;
+      else if(isScanning)               portCell=`<span style="color:var(--text3);font-family:var(--mono);font-size:11px">scanning…</span>`;
+      else if(shown.length===0)         portCell=`<span class="clean-tag">✓ None</span>`;
+      else {
+        const extra=dangerous.filter(p=>['critical','high','medium'].includes(p.risk)).length-shown.length;
+        portCell=`<div class="port-pills">${shown.map(p=>`<span class="ppill ${p.risk}">${p.port}<span style="opacity:.55">/${p.service||'?'}</span></span>`).join('')}${extra>0?`<span style="color:var(--text3);font-size:10px;font-family:var(--mono)">+${extra}</span>`:''}</div>`;
+      }
+
+      // Score cell
+      let scoreCell;
+      if(isScanning) scoreCell=`<div class="scan-ind"><span class="spin-sm">⟳</span><span>scanning…</span></div>`;
+      else if(isScanned) scoreCell=`<div class="score-wrap"><span class="score-num" style="color:${color}">${score}</span><div class="score-bar"><div class="score-fill" style="width:${score}%;background:${color}"></div></div></div>`;
+      else scoreCell=`<button class="btn-ds" onclick="event.stopPropagation();triggerDeepScan('${d.ip}')">⬡ Deep Scan</button>`;
+
+      const dt=deviceType(d);
+      const host=d.hostname&&d.hostname!=='unknown'?d.hostname:'—';
+      const dtLabel=dt.label?`<div class="td-type">${dt.icon} ${dt.label}</div>`:'';
+      const rowCls=(isScanned?'rlink ':'')+`sv-${sev}`;
+      const rowClick=isScanned?`onclick='openModal(${JSON.stringify(d).replace(/'/g,"&#39;")})'`:'';
+
+      return `<tr class="${rowCls}" ${rowClick}>
+        <td class="td-ip">${d.ip}</td>
+        <td><div class="td-host">${host}</div>${dtLabel}</td>
+        <td class="td-os">${d.os&&d.os!=='unknown'?d.os:'—'}</td>
+        <td>${portCell}</td>
+        <td>${scoreCell}</td>
+        <td><span class="badge ${sev}">${sev}</span></td>
+        <td class="td-ts">${ts}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function updateStats(){
+    document.getElementById('s-total').textContent   =devices.length;
+    document.getElementById('s-critical').textContent=devices.filter(d=>d.severity==='critical').length;
+    document.getElementById('s-high').textContent    =devices.filter(d=>d.severity==='high').length;
+    document.getElementById('s-medium').textContent  =devices.filter(d=>d.severity==='medium').length;
+    document.getElementById('s-safe').textContent    =devices.filter(d=>d.severity==='low').length;
+  }
+
+  // ── Port rendering ───────────────────────────────────────────
+  function renderPorts(analysis, tab){
+    const danger=analysis.filter(p=>['critical','high'].includes(p.risk));
+    const notable=analysis.filter(p=>p.risk==='medium');
+    const safe=analysis.filter(p=>p.risk==='low');
+    const tabHtml=`<div class="port-tabs">${[
+      {id:'all',      label:`All (${analysis.length})`},
+      {id:'danger',   label:`Critical / High (${danger.length})`},
+      {id:'notable',  label:`Medium (${notable.length})`},
+      {id:'safe',     label:`Low (${safe.length})`},
+    ].map(t=>`<span class="ptab ${tab===t.id?'active':''}" onclick="switchPortTab('${t.id}')">${t.label}</span>`).join('')}</div>`;
+    const list={all:analysis,danger,notable,safe}[tab]||analysis;
+    if(!list.length) return tabHtml+`<div style="color:var(--text3);font-size:12px;padding:8px 0;font-family:var(--mono)">None in this category.</div>`;
+    return tabHtml+list.map(p=>{
+      const r=p.risk||'unknown';
+      return `<div class="prow ${r}"><div class="prow-top"><span><span class="pname ${r}">${p.port}</span><span style="color:var(--text3);font-family:var(--mono)">/${p.service||'?'}</span></span><span class="prisk ${r}">${r}</span></div><div class="preason">${p.reason||'No analysis available.'}</div></div>`;
+    }).join('');
+  }
+
+  function switchPortTab(tab){
+    activeTab=tab;
+    const el=document.getElementById('port-section');
+    if(!el)return;
+    el.innerHTML=renderPorts(parseJ(el.dataset.analysis),activeTab);
+  }
+
+  // ── Modal ────────────────────────────────────────────────────
+  let currentDevice=null;
+
+  function openModal(d){
+    activeTab='all';
+    const analysis  = parseJ(d.port_analysis);
+    const rawPorts  = parseJ(d.ports);
+    const dangerous = parseJ(d.dangerous_ports);
+    const cves      = parseJ(d.cves);
+    const reasons   = parseJ(d.rule_reasons);
+    const tags      = parseJ(d.shodan_tags);
+    const dt        = deviceType(d);
+    const isScanned = d.final_score!==null && d.final_score!==undefined;
+
+    // ── PORT DISPLAY FIX ─────────────────────────────────────
+    // Build the best possible port analysis list from all available data sources:
+    // 1. AI port_analysis (best — includes reason per port)
+    // 2. dangerous_ports (fallback — AI always populates this even when port_analysis is empty)
+    // 3. raw nmap ports (last resort)
+    let displayPorts = [...analysis];
+
+    if(!displayPorts.length && dangerous.length){
+      displayPorts = dangerous.map(p=>({
+        port:    p.port,
+        service: p.service || 'unknown',
+        risk:    p.risk    || 'high',
+        reason:  p.reason  || 'Flagged as a dangerous port.'
+      }));
+    }
+
+    // Merge in any raw ports not already covered
+    if(rawPorts.length){
+      const covered = new Set(displayPorts.map(p=>p.port));
+      rawPorts.forEach(p=>{
+        if(!covered.has(p.port)){
+          displayPorts.push({
+            port:    p.port,
+            service: p.service || 'unknown',
+            risk:    'unknown',
+            reason:  [p.product,p.version].filter(Boolean).join(' ') || 'Port detected during scan.'
+          });
+        }
+      });
+    }
+
+    document.getElementById('modal-title').textContent=`${d.ip}  —  ${d.hostname||'Unknown'}`;
+    document.getElementById('modal-body').innerHTML=`
+      ${!isScanned?`
+        <div class="callout">
+          <p><strong>Not yet scanned.</strong> Deep scan this device to see open ports, risk score, and AI analysis.</p>
+          <button class="btn-callout" onclick="triggerDeepScan('${d.ip}');closeModal()">⬡ Scan Now</button>
+        </div>`:''}
+      <div class="mrow"><span class="k">IP Address</span>  <span class="v" style="font-family:var(--mono)">${d.ip}</span></div>
+      <div class="mrow"><span class="k">MAC</span>         <span class="v" style="font-family:var(--mono)">${d.mac||'—'}</span></div>
+      <div class="mrow"><span class="k">Device Type</span> <span class="v" style="color:var(--blue)">${dt.label?`${dt.icon} ${dt.label}`:'—'}</span></div>
+      <div class="mrow"><span class="k">OS</span>          <span class="v">${d.os&&d.os!=='unknown'?d.os:'—'}</span></div>
+      <div class="mrow"><span class="k">Risk Score</span>  <span class="v" style="font-family:var(--mono)">${isScanned?d.final_score+' / 100':'Not scanned'}</span></div>
+      <div class="mrow"><span class="k">Severity</span>    <span class="v"><span class="badge ${d.severity||'unknown'}">${d.severity||'unknown'}</span></span></div>
+      <div class="mrow"><span class="k">First Seen</span>  <span class="v" style="font-family:var(--mono)">${d.first_seen||'—'}</span></div>
+      <div class="mrow"><span class="k">Last Scanned</span><span class="v" style="font-family:var(--mono)">${d.last_scanned?new Date(d.last_scanned).toLocaleString():'—'}</span></div>
+      ${tags.length?`<div class="mrow"><span class="k">Shodan Tags</span><span class="v" style="color:var(--blue);font-family:var(--mono)">${tags.join(', ')}</span></div>`:''}
+      ${d.explanation?`<div class="slbl">AI Analysis</div><p class="explainer">${d.explanation}</p>`:''}
+      ${d.remediation?`<div class="slbl">Recommended Action</div><p class="explainer">${d.remediation}</p>`:''}
+      ${reasons.length?`<div class="slbl">Rule Triggers</div>${reasons.map(r=>`<div style="font-size:11px;color:var(--text3);padding:2px 0;font-family:var(--mono)">· ${r}</div>`).join('')}`:''}
+      ${cves.length?`<div class="slbl">Known CVEs (Shodan)</div><div>${cves.map(c=>`<span class="cve-tag">${c}</span>`).join('')}</div>`:''}
+      ${displayPorts.length?`
+        <div class="slbl">Port Analysis</div>
+        <div id="port-section" data-analysis='${JSON.stringify(displayPorts).replace(/'/g,"&#39;")}'>
+          ${renderPorts(displayPorts,activeTab)}
+        </div>`:''}
+      ${isScanned?`
+        <div class="modal-cop-cta">
+          <div class="modal-cop-cta-info">
+            <h4>✦ Ask AI Copilot</h4>
+            <p>Deep dive — remediation steps, threat context, security advice.</p>
+          </div>
+          <button class="btn-ask-cop" onclick="closeModal();copAsk('Tell me about device ${d.ip}. OS: ${(d.os||'unknown').replace(/'/g,'').replace(/"/g,'')}. Severity: ${d.severity||'unknown'}. Score: ${d.final_score||0}. Give me a detailed security analysis and what to do.')">Ask Copilot →</button>
+        </div>`:''}
+    `;
+    currentDevice=d;
+    document.getElementById('overlay').classList.add('open');
+  }
+
+  function closeModal(){document.getElementById('overlay').classList.remove('open');currentDevice=null;}
+  function overlayClick(e){if(e.target===document.getElementById('overlay'))closeModal();}
+
+  // ── Floating Copilot ─────────────────────────────────────────
+  function toggleCopilot(){
+    copOpen=!copOpen;
+    const panel=document.getElementById('cop-panel');
+    panel.classList.toggle('cop-hidden',!copOpen);
+    if(copOpen){refreshCopCtx();document.getElementById('fab-pulse').classList.remove('on');}
+  }
+
+  function refreshCopCtx(){
+    const scanned =devices.filter(d=>d.final_score!==null);
+    const critical=devices.filter(d=>d.severity==='critical').length;
+    const high    =devices.filter(d=>d.severity==='high').length;
+    let cveCount=0;
+    scanned.forEach(d=>{try{cveCount+=parseJ(d.cves).length;}catch{}});
+
+    const ctx=document.getElementById('cop-ctx');
+    ctx.innerHTML=`
+      <div class="cop-ctx-chip"><span>Devices:</span><strong>${devices.length}</strong></div>
+      <div class="ctx-dot"></div>
+      <div class="cop-ctx-chip"><span>Scanned:</span><strong>${scanned.length}</strong></div>
+      <div class="ctx-dot"></div>
+      <div class="cop-ctx-chip" style="color:${critical>0?'var(--red)':'var(--text3)'}"><span>Critical:</span><strong style="color:${critical>0?'var(--red)':'var(--text2)'}">${critical}</strong></div>
+      <div class="ctx-dot"></div>
+      <div class="cop-ctx-chip" style="color:${high>0?'var(--orange)':'var(--text3)'}"><span>High:</span><strong style="color:${high>0?'var(--orange)':'var(--text2)'}">${high}</strong></div>
+      ${cveCount>0?`<div class="ctx-dot"></div><div class="cop-ctx-chip"><span>CVEs:</span><strong style="color:var(--red)">${cveCount}</strong></div>`:''}
+    `;
+    document.getElementById('cop-hdr-sub').textContent=
+      scanned.length===0?'no devices scanned yet':
+      `${scanned.length} device${scanned.length!==1?'s':''} analyzed`;
+  }
+
+  function copAsk(q){
+    if(!copOpen) toggleCopilot();
+    document.getElementById('cop-inp').value=q;
+    sendCopilot();
+  }
+
+  async function sendCopilot(){
+    const inp=document.getElementById('cop-inp');
+    const q=inp.value.trim();
+    if(!q)return;
+    const msgs=document.getElementById('cop-msgs');
+    const send=document.getElementById('cop-send');
+
+    msgs.innerHTML+=`<div class="cmsg user"><div class="cbubble">${q}</div></div>`;
+    const tid='th-'+Date.now();
+    msgs.innerHTML+=`<div class="cop-thinking" id="${tid}">✦ thinking…</div>`;
+    msgs.scrollTop=msgs.scrollHeight;
+    inp.value=''; inp.style.height='auto'; send.disabled=true;
+    copHistory.push({role:'user',content:q});
+
+    try{
+      const res=await fetch('/api/copilot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,history:copHistory.slice(-8)})});
+      const data=await res.json();
+      document.getElementById(tid)?.remove();
+      copHistory.push({role:'assistant',content:data.answer});
+      msgs.innerHTML+=`<div class="cmsg ai"><div class="cbubble">${data.answer}</div></div>`;
+    }catch(e){
+      document.getElementById(tid)?.remove();
+      msgs.innerHTML+=`<div class="cmsg ai"><div class="cbubble">Sorry, copilot unavailable. Check your Groq API key.</div></div>`;
+    }
+    msgs.scrollTop=msgs.scrollHeight;
+    send.disabled=false;
+  }
+
+  // ── Simulator ────────────────────────────────────────────────
+  async function loadTopology(){
+    try{
+      const resp=await fetch('/api/topology');
+      topoData=await resp.json();
+      if(topoData.nodes?.length>0){document.getElementById('topo-ph').style.display='none';drawTopology(topoData);}
+    }catch(e){}
+  }
+
+  async function runSim(type){
+    document.querySelectorAll('.atk-btn').forEach(b=>b.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    document.getElementById('atk-res').style.display='none';
+    document.getElementById('sim-loading').classList.add('show');
+    document.getElementById('sim-txt').textContent=`Simulating ${type}…`;
+    try{
+      const resp=await fetch(`/api/simulate/${type}`,{method:'POST'});
+      const result=await resp.json();
+      document.getElementById('sim-loading').classList.remove('show');
+      if(result.error){document.getElementById('topo-ph').style.display='block';document.getElementById('topo-ph').innerHTML=`<div class="ti">⚠️</div><div>${result.error}</div>`;return;}
+      showAttackResult(result);
+      if(topoData)animatePath(result.attack_path||[],topoData);
+    }catch(e){document.getElementById('sim-loading').classList.remove('show');}
+  }
+
+  function showAttackResult(result){
+    const panel=document.getElementById('atk-res');
+    const ok=result.success;
+    const sc=result.scenario||{};
+    panel.style.display='block';
+    const SC={critical:'var(--red)',high:'var(--orange)',medium:'var(--blue)',low:'var(--green2)'};
+    document.getElementById('ar-hdr').innerHTML=`
+      <div><div class="ar-title" style="color:${ok?'var(--red)':'var(--green2)'}">${sc.icon||'⚡'} ${result.attack_name||'Simulation'}</div>
+      <div class="ar-meta">Compromise time: <strong>${result.time_to_compromise||'N/A'}</strong> · Compromised: <strong>${(result.compromised_devices||[]).length}</strong>${result.entry_device?` · Entry: <strong>${result.entry_device}</strong>`:''}</div></div>
+      <div class="ar-status ${ok?'compromised':'blocked'}">${ok?'COMPROMISED':'BLOCKED'}</div>`;
+    document.getElementById('ar-steps').innerHTML=(result.attack_path||[]).map(s=>`
+      <div class="sc" style="border-color:${SC[s.severity]||'var(--border)'}">
+        <div class="sc-n">Step ${s.step}</div>
+        <div class="sc-b"><div class="sc-dev">${s.device_ip} <span style="color:var(--text3);font-weight:400">(${s.device_type||'device'})</span></div>
+        <div class="sc-act">${s.action}</div>${s.vulnerability_used?`<div class="sc-v">🔓 ${s.vulnerability_used}</div>`:''}</div>
+        <div class="sc-t">${s.time_elapsed||''}</div></div>`).join('');
+    document.getElementById('ar-fix').innerHTML=`<div class="fix-t">🛡 How to stop this</div><div class="fix-b">${result.critical_fix||'No fix available.'}</div>${result.prevention_tip?`<div class="fix-tip">💡 ${result.prevention_tip}</div>`:''}`;
+    panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+
+  // ── D3 Topology ──────────────────────────────────────────────
+  function drawTopology(data){
+    const box=document.getElementById('topo-box');
+    const W=box.offsetWidth,H=box.offsetHeight;
+    const svg=d3.select('#topo-svg');
+    svg.selectAll('*').remove();
+    if(d3Sim)d3Sim.stop();
+    const tip=document.getElementById('d3-tip');
+    const nodes=data.nodes.map(n=>({...n})),edges=data.edges.map(e=>({...e}));
+    d3Sim=d3.forceSimulation(nodes)
+      .force('link',d3.forceLink(edges).id(d=>d.id).distance(130))
+      .force('charge',d3.forceManyBody().strength(-350))
+      .force('center',d3.forceCenter(W/2,H/2))
+      .force('col',d3.forceCollide(36));
+    const link=svg.append('g').selectAll('line').data(edges).join('line')
+      .attr('stroke',d=>d.connection_type==='smb_lateral'?'#b8782022':'#18304a')
+      .attr('stroke-width',1.5).attr('stroke-dasharray',d=>d.connection_type==='smb_lateral'?'4,4':null);
+    const node=svg.append('g').selectAll('g').data(nodes).join('g')
+      .attr('id',d=>`n-${d.id.replace(/\./g,'-')}`)
+      .call(d3.drag().on('start',(e,d)=>{d3Sim.alphaTarget(.3).restart();d.fx=d.x;d.fy=d.y;}).on('drag',(e,d)=>{d.fx=e.x;d.fy=e.y;}).on('end',(e,d)=>{d3Sim.alphaTarget(0);d.fx=null;d.fy=null;}));
+    node.filter(d=>d.is_router).append('circle').attr('r',30).attr('fill','none').attr('stroke','#3476cc22').attr('stroke-width',5);
+    node.append('circle').attr('r',d=>d.is_router?20:Math.max(12,d.size||15)).attr('fill',d=>d.color).attr('fill-opacity',.12).attr('stroke',d=>d.color).attr('stroke-width',1.5);
+    node.append('text').text(d=>d.is_router?'◈':d.risk_level==='critical'?'✕':d.risk_level==='high'?'!':'●')
+      .attr('text-anchor','middle').attr('dominant-baseline','middle').attr('font-size',d=>d.is_router?'13px':'10px').attr('fill',d=>d.color).style('pointer-events','none').style('font-family','var(--mono)');
+    node.append('text').text(d=>d.id).attr('text-anchor','middle').attr('dy',d=>(d.is_router?20:Math.max(12,d.size||15))+12).attr('font-size','9px').attr('fill','#2e4d66').style('pointer-events','none').style('font-family','var(--mono)');
+    node.on('mouseover',(e,d)=>{
+      tip.style.opacity='1';
+      tip.innerHTML=`<div style="color:${d.color};font-weight:600">${d.id}</div><div style="color:var(--text3);font-size:10px">${d.os||'Unknown'}</div><div style="margin-top:3px">Risk: <strong style="color:${d.color}">${d.risk_level}</strong> (${d.risk_score})</div><div style="color:var(--text3);font-size:10px">${d.open_ports.length} ports</div>`;
+    }).on('mousemove',e=>{const r=box.getBoundingClientRect();tip.style.left=(e.clientX-r.left+12)+'px';tip.style.top=(e.clientY-r.top-10)+'px';})
+      .on('mouseout',()=>{tip.style.opacity='0';});
+    d3Sim.on('tick',()=>{
+      link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+      node.attr('transform',d=>`translate(${Math.max(26,Math.min(W-26,d.x))},${Math.max(26,Math.min(H-26,d.y))})`);
+    });
+  }
+
+  function animatePath(path,data){
+    if(!data||!path.length)return;
+    data.nodes.forEach(n=>{const el=document.querySelector(`#n-${n.id.replace(/\./g,'-')} circle:last-of-type`);if(el){el.style.transition='';el.setAttribute('stroke',n.color);el.setAttribute('fill-opacity','0.12');}});
+    path.forEach((s,i)=>setTimeout(()=>{const cs=document.querySelectorAll(`#n-${s.device_ip.replace(/\./g,'-')} circle`);cs.forEach(c=>{c.style.transition='stroke .3s,fill-opacity .3s';c.setAttribute('stroke','var(--red)');c.setAttribute('fill-opacity','0.32');});},i*900));
+  }
+
+  // ── Loader helpers ────────────────────────────────────────────
+  function stepDone(n)   {document.getElementById(`step-${n}`).className='ld-step done'}
+  function stepActive(n) {document.getElementById(`step-${n}`).className='ld-step active'}
+  function setLoaderMsg(t){document.getElementById('loader-msg').textContent=t}
+  function hideLoader()  {const el=document.getElementById('loader');el.classList.add('hidden');setTimeout(()=>el.style.display='none',500)}
+  function sleep(ms)     {return new Promise(r=>setTimeout(r,ms))}
+
+  boot();
+</script>
+</body>
+</html>

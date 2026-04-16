@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-nmap
+groq
+requests
+python-dotenv
+aiohttp
+pywin32
+networkx

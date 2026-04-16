@@ -1,0 +1,11 @@
+.env
+.sixth/
+venv/
+**/__pycache__/
+*.py[cod]
+netguard.db
+config/cache/
+config/logs/
+config/codex.sqlite3
+config/secret_key
+config/codex.toml
